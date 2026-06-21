@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dad's History Gauntlet - Father's Day Edition</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#1a0a00; font-family:'Georgia',serif; color:#f5deb3; overflow:hidden; }
+  #gameContainer { width:800px; height:600px; margin:0 auto; position:relative; }
+  canvas { display:block; border:3px solid #8b6914; }
+  #ui { position:absolute; top:0; left:0; width:100%; height:100%;
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        background:rgba(10,5,0,0.92); }
+  #ui h1 { font-size:2em; color:#ffd700; text-shadow:0 0 10px #ff8c00; margin-bottom:8px; text-align:center; }
+  #ui h2 { font-size:1.3em; color:#ff8c00; margin-bottom:16px; text-align:center; }
+  #ui p  { font-size:1em; color:#f5deb3; margin-bottom:12px; text-align:center; max-width:680px; line-height:1.5; }
+  #question { font-size:1.1em; color:#fff8dc; margin-bottom:18px; text-align:center; max-width:680px; line-height:1.5; font-weight:bold; }
+  .choiceBtn { display:block; width:640px; margin:6px auto; padding:10px 16px;
+               background:#3d1f00; border:2px solid #8b6914; color:#f5deb3;
+               font-family:'Georgia',serif; font-size:1em; cursor:pointer;
+               border-radius:4px; text-align:left; transition:background 0.2s; }
+  .choiceBtn:hover { background:#6b3a00; color:#ffd700; }
+  #startBtn, #continueBtn { padding:14px 32px; font-size:1.2em; background:#8b0000;
+               border:2px solid #ffd700; color:#ffd700; font-family:'Georgia',serif;
+               cursor:pointer; border-radius:6px; margin-top:12px; }
+  #startBtn:hover, #continueBtn:hover { background:#b00000; }
+  #score { position:absolute; top:8px; right:12px; font-size:1em; color:#ffd700;
+           background:rgba(0,0,0,0.6); padding:4px 10px; border-radius:4px; }
+  #lives { position:absolute; top:8px; left:12px; font-size:1em; color:#ff6b6b;
+            background:rgba(0,0,0,0.6); padding:4px 10px; border-radius:4px; }
+  #feedback { font-size:1.1em; margin:10px 0; min-height:28px; font-weight:bold; }
+  #feedback.correct { color:#00ff7f; }
+  #feedback.wrong   { color:#ff4444; }
+  #stateInfo { font-size:0.95em; color:#ffd700; margin-bottom:10px; text-align:center; }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="c" width="800" height="600"></canvas>
+  <div id="score">Score: 0</div>
+  <div id="lives">LIVES</div>
+  <div id="ui"></div>
+</div>
+<script>
+const MCAS_QUESTIONS = [
+  { q:"What document declared the American colonies independent from Britain in 1776?", a:["Declaration of Independence","Magna Carta","Constitution","Articles of Confederation"], c:0 },
+  { q:"Who was the Commander-in-Chief of the Continental Army during the Revolutionary War?", a:["George Washington","Benjamin Franklin","Paul Revere","Thomas Jefferson"], c:0 },
+  { q:"What was the name of the famous midnight ride in 1775 to warn colonists of the British approach?", a:["Paul Revere's Ride","The Boston March","The Midnight Express","The Lexington Run"], c:0 },
+  { q:"The Battle of Saratoga (1777) is considered a turning point because it:", a:["Convinced France to ally with the colonists","Ended the war immediately","Destroyed the British navy","Captured King George III"], c:0 },
+  { q:"What was the main reason Southern states seceded from the Union before the Civil War?", a:["To preserve slavery","To lower taxes","To gain more land","To build a new railroad"], c:0 },
+  { q:"Who was President of the United States during the Civil War?", a:["Abraham Lincoln","Ulysses S. Grant","Jefferson Davis","James Buchanan"], c:0 },
+  { q:"The Emancipation Proclamation (1863) declared that:", a:["Enslaved people in Confederate states were free","All taxes were abolished","The war was over","Women could vote"], c:0 },
+  { q:"What was the bloodiest single-day battle of the Civil War?", a:["Antietam","Gettysburg","Bull Run","Vicksburg"], c:0 },
+  { q:"Which amendment to the Constitution abolished slavery?", a:["13th Amendment","14th Amendment","1st Amendment","5th Amendment"], c:0 },
+  { q:"The Boston Tea Party (1773) was a protest against:", a:["Taxation without representation","Religious persecution","Lack of trial by jury","Forced housing of soldiers"], c:0 },
+  { q:"What term describes colonists who remained loyal to Britain during the Revolutionary War?", a:["Loyalists","Patriots","Minutemen","Redcoats"], c:0 },
+  { q:"The Battle of Gettysburg (July 1863) resulted in:", a:["A Union victory and turning point of the war","A Confederate victory","A ceasefire","The capture of Washington D.C."], c:0 },
+];
+const CONFEDERATE_SOLDIERS = [
+  { name:"Pvt. Beauregard Hicks", state:"Georgia", whiskey:"Georgia Peach Bourbon" },
+  { name:"Sgt. Cletus Tanner", state:"Mississippi", whiskey:"Mississippi Moonshine" },
+  { name:"Cpl. Wade Beaumont", state:"South Carolina", whiskey:"Carolina Rye" },
+  { name:"Pvt. Hezekiah Potts", state:"Alabama", whiskey:"Alabama Corn Whiskey" },
+  { name:"Lt. Orville Prentiss", state:"Virginia", whiskey:"Virginia Bourbon" },
+];
+const STATE_QUESTIONS = {
+  "Georgia":[
+    { q:"Georgia was the ____ state to ratify the U.S. Constitution.", a:["4th","1st","7th","13th"], c:0 },
+    { q:"General Sherman's March to the Sea in 1864 ended at which Georgia city?", a:["Savannah","Atlanta","Macon","Columbus"], c:0 },
+    { q:"Which Confederate state was invaded by Sherman's army in late 1864?", a:["Georgia","Virginia","Tennessee","Alabama"], c:0 },
+  ],
+  "Mississippi":[
+    { q:"The Siege of Vicksburg (1863) was fought in which state?", a:["Mississippi","Louisiana","Tennessee","Alabama"], c:0 },
+    { q:"Who was the President of the Confederacy, a U.S. Senator from Mississippi?", a:["Jefferson Davis","Robert E. Lee","Stonewall Jackson","P.G.T. Beauregard"], c:0 },
+    { q:"Control of Vicksburg gave the Union control of which major river?", a:["Mississippi River","Ohio River","Tennessee River","Cumberland River"], c:0 },
+  ],
+  "South Carolina":[
+    { q:"The Civil War began with the Confederate attack on which South Carolina fort?", a:["Fort Sumter","Fort Wagner","Fort Moultrie","Fort Johnson"], c:0 },
+    { q:"South Carolina was the first state to do what in December 1860?", a:["Secede from the Union","Abolish slavery","Join the Confederacy","Declare war on the North"], c:0 },
+    { q:"The Battle of Cowpens (1781), a Revolutionary War battle, took place in which state?", a:["South Carolina","North Carolina","Georgia","Virginia"], c:0 },
+  ],
+  "Alabama":[
+    { q:"Which Alabama city served as the FIRST capital of the Confederacy?", a:["Montgomery","Birmingham","Mobile","Huntsville"], c:0 },
+    { q:"The Confederate States of America was formally established in February 1861 in:", a:["Montgomery, Alabama","Richmond, Virginia","Charleston, South Carolina","Atlanta, Georgia"], c:0 },
+    { q:"Alabama seceded from the Union in January of which year?", a:["1861","1860","1862","1863"], c:0 },
+  ],
+  "Virginia":[
+    { q:"Which Virginia city served as the capital of the Confederacy for most of the war?", a:["Richmond","Williamsburg","Norfolk","Alexandria"], c:0 },
+    { q:"Where did General Lee surrender to end the Civil War in April 1865?", a:["Appomattox Court House","Richmond","Petersburg","Fredericksburg"], c:0 },
+    { q:"The final major battle of the Revolutionary War was fought at Yorktown in which colony?", a:["Virginia","Maryland","Pennsylvania","New York"], c:0 },
+  ],
+};
+
+let gameState='title', score=0, lives=3;
+let mcasIndex=0, quizDeck=[];
+let currentSoldier=null, stateQDeck=[], stateQIndex=0, stateCorrect=0;
+let player={x:80,y:446,w:28,h:44,vy:0,onGround:true};
+let bullets=[], shells=[], particles=[], whiskey=null;
+let battleTimer=0, battlePhase='dodge', soldierX=680, bossHP=3;
+let timeSinceLastShot=0, timeSinceLastShell=0, invincibleFrames=0;
+
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const ui=document.getElementById('ui');
+const scoreEl=document.getElementById('score');
+const livesEl=document.getElementById('lives');
+const GROUND_Y=490;
+
+function shuffle(arr){
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+  return a;
+}
+function updateScore(){scoreEl.textContent='Score: '+score;}
+function updateLives(){let s='';for(let i=0;i<3;i++)s+=(i<lives?'❤️':'🖤');livesEl.textContent=s||'💀';}
+
+function showTitle(){
+  gameState='title'; ui.style.display='flex';
+  ui.innerHTML='<h1>🎖️ Dad's History Gauntlet 🎖️</h1>'
+    +'<h2>A Father's Day Special</h2>'
+    +'<p>Dad's been hitting the bourbon and has <em>strong opinions</em> about your 8th grade history grade. Answer his MCAS questions correctly... or get zapped to a Civil War battlefield!</p>'
+    +'<p>Dodge bullets & cannon shells, steal whiskey from a named Confederate soldier, bring it back to Dad, then answer 3 questions about that soldier's home state. Get all 3 right and Dad passes out happy! 😴🥃</p>'
+    +'<p style="color:#ffd700">⬆️/W = Jump &nbsp; ➡️/D = Move right &nbsp; ⬅️/A = Move left &nbsp; SPACE = Steal whiskey</p>'
+    +'<button id="startBtn">Let's Do This! 🥃</button>';
+  document.getElementById('startBtn').onclick=startQuiz;
+}
+
+function startQuiz(){gameState='quiz';quizDeck=shuffle(MCAS_QUESTIONS);mcasIndex=0;showQuestion();}
+
+function showQuestion(){
+  if(mcasIndex>=quizDeck.length){showWin('quiz');return;}
+  const q=quizDeck[mcasIndex];
+  ui.style.display='flex';
+  const sa=shuffle(q.a.map((t,i)=>({t,c:i===q.c})));
+  ui.innerHTML='<h2>📜 Dad's MCAS Challenge — Q'+(mcasIndex+1)+' of '+quizDeck.length+'</h2>'
+    +'<div id="question">'+q.q+'</div>'
+    +sa.map((a,i)=>'<button class="choiceBtn" data-c="'+a.c+'">'+String.fromCharCode(65+i)+'. '+a.t+'</button>').join('')
+    +'<div id="feedback"></div>';
+  document.querySelectorAll('.choiceBtn').forEach(b=>{
+    b.onclick=function(){
+      const correct=this.dataset.c==='true';
+      const fb=document.getElementById('feedback');
+      document.querySelectorAll('.choiceBtn').forEach(x=>x.disabled=true);
+      if(correct){
+        fb.className='correct';fb.textContent='✅ Correct! Dad nods approvingly.';
+        score+=100;updateScore();
+        setTimeout(()=>{mcasIndex++;showQuestion();},1200);
+      } else {
+        fb.className='wrong';fb.textContent='❌ Wrong! Dad reaches for the time machine…';
+        setTimeout(startBattle,1400);
+      }
+    };
+  });
+}
+
+function startBattle(){
+  currentSoldier=CONFEDERATE_SOLDIERS[Math.floor(Math.random()*CONFEDERATE_SOLDIERS.length)];
+  gameState='battle';battlePhase='dodge';
+  ui.style.display='none';
+  player={x:80,y:GROUND_Y-44,w:28,h:44,vy:0,onGround:true};
+  bullets=[];shells=[];particles=[];whiskey=null;
+  battleTimer=0;timeSinceLastShot=0;timeSinceLastShell=0;
+  bossHP=3;soldierX=680;invincibleFrames=0;
+}
+
+function showStateQuiz(){
+  gameState='stateQuiz';
+  stateQDeck=[...STATE_QUESTIONS[currentSoldier.state]];
+  stateQIndex=0;stateCorrect=0;nextStateQ();
+}
+
+function nextStateQ(){
+  if(stateQIndex>=3){
+    if(stateCorrect>=3)showWin('state');
+    else showGameOver('Dad is disappointed — needed 3/3 on the state quiz. He drinks alone.');
+    return;
+  }
+  const q=stateQDeck[stateQIndex];
+  const sa=shuffle(q.a.map((t,i)=>({t,c:i===q.c})));
+  ui.style.display='flex';
+  ui.innerHTML='<h2>🥃 Dad's Drinking Quiz — '+currentSoldier.state+' (Q'+(stateQIndex+1)+'/3)</h2>'
+    +'<div id="stateInfo">Dad is sipping '+currentSoldier.whiskey+'… impress him with '+currentSoldier.state+' facts!</div>'
+    +'<div id="question">'+q.q+'</div>'
+    +sa.map((a,i)=>'<button class="choiceBtn" data-c="'+a.c+'">'+String.fromCharCode(65+i)+'. '+a.t+'</button>').join('')
+    +'<div id="feedback"></div>';
+  document.querySelectorAll('.choiceBtn').forEach(b=>{
+    b.onclick=function(){
+      const correct=this.dataset.c==='true';
+      const fb=document.getElementById('feedback');
+      document.querySelectorAll('.choiceBtn').forEach(x=>x.disabled=true);
+      if(correct){stateCorrect++;fb.className='correct';fb.textContent='✅ Correct! Dad sips and smiles.';score+=150;updateScore();}
+      else{fb.className='wrong';fb.textContent='❌ Wrong! Dad frowns into his glass.';}
+      setTimeout(()=>{stateQIndex++;nextStateQ();},1300);
+    };
+  });
+}
+
+function showWin(type){
+  gameState='win';ui.style.display='flex';
+  ui.innerHTML='<h1>🎉 Happy Father's Day! 🎉</h1>'
+    +'<h2>'+(type==='state'?"Dad passed out happy! 😴🥃":"You aced the quiz! Dad is proud! 🏆")+'</h2>'
+    +'<p>'+(type==='state'
+      ?"Dad polished off the "+currentSoldier.whiskey+" and called you 'the smartest kid in the regiment' before passing out on the couch."
+      :"You answered every MCAS question correctly! Dad set down the bourbon and gave you a high-five. Almost.")+'</p>'
+    +'<p style="color:#ffd700;font-size:1.3em">Final Score: '+score+'</p>'
+    +'<button id="startBtn">Play Again 🥃</button>';
+  document.getElementById('startBtn').onclick=()=>{lives=3;score=0;updateScore();updateLives();showTitle();};
+}
+
+function showGameOver(msg){
+  gameState='gameover';ui.style.display='flex';
+  ui.innerHTML='<h1>💀 Game Over 💀</h1><h2>'+(msg||"You didn't make it.")+'</h2>'
+    +'<p style="color:#ffd700;font-size:1.2em">Score: '+score+'</p>'
+    +'<button id="startBtn">Try Again 🥃</button>';
+  document.getElementById('startBtn').onclick=()=>{lives=3;score=0;updateScore();updateLives();showTitle();};
+}
+
+const keys={};
+window.addEventListener('keydown',e=>{keys[e.key]=true;if(['ArrowUp','ArrowDown',' '].includes(e.key))e.preventDefault();});
+window.addEventListener('keyup',e=>{keys[e.key]=false;});
+
+function spawnParticle(x,y,color){
+  for(let i=0;i<8;i++)particles.push({x,y,vx:(Math.random()-0.5)*5,vy:-(Math.random()*4+1),life:40,color,size:Math.random()*5+2});
+}
+
+function hitPlayer(){
+  if(invincibleFrames>0)return;
+  lives--;invincibleFrames=90;updateLives();
+  spawnParticle(player.x+player.w/2,player.y+player.h/2,'#ff4444');
+  if(lives<=0){gameState='dead';setTimeout(()=>showGameOver('You were hit too many times! Dad angrily drinks alone.'),800);}
+}
+
+function drawBG(){
+  const sky=ctx.createLinearGradient(0,0,0,GROUND_Y);
+  sky.addColorStop(0,'#2b1a0a');sky.addColorStop(1,'#5a3010');
+  ctx.fillStyle=sky;ctx.fillRect(0,0,800,GROUND_Y);
+  ctx.fillStyle='#3d2b1a';ctx.fillRect(0,GROUND_Y,800,110);
+  ctx.fillStyle='#5a3e28';ctx.fillRect(0,GROUND_Y,800,8);
+  ctx.fillStyle='#1a0d00';
+  [60,160,300,470,590,710].forEach(tx=>{
+    ctx.fillRect(tx,GROUND_Y-65,10,65);
+    ctx.beginPath();ctx.arc(tx+5,GROUND_Y-75,22,0,Math.PI*2);ctx.fill();
+  });
+  ctx.strokeStyle='#2a1a0a';ctx.lineWidth=4;
+  ctx.beginPath();ctx.arc(720,GROUND_Y-20,20,0,Math.PI*2);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(700,GROUND_Y-20);ctx.lineTo(760,GROUND_Y-20);ctx.stroke();
+  for(let i=0;i<3;i++){
+    const sway=Math.sin(battleTimer*0.015+i*1.2)*18;
+    ctx.fillStyle='rgba(80,40,10,0.28)';
+    ctx.beginPath();ctx.arc(120+i*220+sway,80+i*25,45,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(150+i*220+sway,65+i*25,32,0,Math.PI*2);ctx.fill();
+  }
+}
+
+function drawTimeMachine(){
+  ctx.fillStyle='#2a2a5a';ctx.fillRect(8,GROUND_Y-95,58,95);
+  ctx.fillStyle='#5a5a9a';ctx.fillRect(12,GROUND_Y-91,50,6);
+  const grd=ctx.createRadialGradient(37,GROUND_Y-52,2,37,GROUND_Y-52,26);
+  grd.addColorStop(0,'rgba(160,0,255,0.9)');grd.addColorStop(1,'rgba(80,0,200,0)');
+  ctx.fillStyle=grd;ctx.beginPath();ctx.ellipse(37,GROUND_Y-52,18,28,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#c8a0ff';ctx.font='9px Georgia';
+  ctx.fillText('TIME',16,GROUND_Y-92);ctx.fillText('MACHINE',9,GROUND_Y-80);
+}
+
+function drawDad(){
+  const dx=62,dy=GROUND_Y-68;
+  const sway=Math.sin(battleTimer*0.05)*3;
+  ctx.save();ctx.translate(sway,0);
+  ctx.fillStyle='#6b3a0a';ctx.fillRect(dx,dy+18,28,42);
+  ctx.fillStyle='#d4956a';ctx.fillRect(dx+4,dy,20,20);
+  ctx.fillStyle='#3a1a00';ctx.fillRect(dx+2,dy-9,24,11);ctx.fillRect(dx-2,dy+1,28,5);
+  ctx.fillStyle='#3a6a1a';ctx.fillRect(dx+28,dy+30,8,22);
+  ctx.fillStyle='#5a8a3a';ctx.fillRect(dx+30,dy+24,5,9);
+  ctx.restore();
+}
+
+function drawPlayer(){
+  const px=player.x,py=player.y;
+  ctx.fillStyle='#2a5a8a';ctx.fillRect(px,py+18,player.w,player.h-18);
+  ctx.fillStyle='#d4956a';ctx.fillRect(px+4,py,player.w-8,20);
+  ctx.fillStyle='#1a1a6a';ctx.fillRect(px+2,py-10,player.w-4,12);ctx.fillRect(px-2,py,player.w+4,4);
+  ctx.fillStyle='#2a5a8a';ctx.fillRect(px-8,py+20,10,20);ctx.fillRect(px+player.w-2,py+20,10,20);
+  ctx.fillStyle='#1a3a5a';ctx.fillRect(px+2,py+player.h-12,10,14);ctx.fillRect(px+player.w-12,py+player.h-12,10,14);
+}
+
+function drawSoldier(){
+  const sx=soldierX,sy=GROUND_Y-64;
+  ctx.fillStyle='#7a7a6a';ctx.fillRect(sx,sy+18,34,44);
+  ctx.fillStyle='#d4956a';ctx.fillRect(sx+4,sy,26,20);
+  ctx.fillStyle='#5a5a4a';ctx.fillRect(sx+2,sy-9,30,11);ctx.fillRect(sx-2,sy+1,34,5);
+  ctx.fillStyle='#5a3a1a';ctx.fillRect(sx-22,sy+24,24,4);
+  if(battlePhase==='dodge'){
+    ctx.fillStyle='#8b4513';ctx.fillRect(sx+8,sy+42,10,20);
+    ctx.fillStyle='#d2691e';ctx.fillRect(sx+10,sy+38,6,8);
+  }
+  ctx.fillStyle='rgba(0,0,0,0.75)';ctx.fillRect(sx-10,sy-30,105,20);
+  ctx.fillStyle='#ffd700';ctx.font='bold 11px Georgia';
+  ctx.fillText(currentSoldier.name,sx-7,sy-15);
+  for(let i=0;i<bossHP;i++){ctx.font='13px Arial';ctx.fillText('❤️',sx+i*20-5,sy-33);}
+}
+
+function drawWhiskey(){
+  if(!whiskey)return;
+  const wx=whiskey.x,wy=whiskey.y;
+  ctx.fillStyle='#8b4513';ctx.fillRect(wx,wy,14,28);
+  ctx.fillStyle='#d2691e';ctx.fillRect(wx+2,wy-8,10,12);
+  ctx.fillStyle='rgba(200,150,50,0.8)';ctx.fillRect(wx+2,wy+2,10,22);
+  ctx.fillStyle='#fff8dc';ctx.fillRect(wx+3,wy+6,8,10);
+}
+
+function drawHUD(){
+  ctx.fillStyle='rgba(0,0,0,0.65)';ctx.fillRect(0,0,800,36);
+  ctx.fillStyle='#ffd700';ctx.font='bold 14px Georgia';
+  ctx.fillText('BATTLEFIELD: '+currentSoldier.state.toUpperCase(),10,23);
+  let hint='';
+  if(battlePhase==='dodge')hint='Dodge bullets & shells — reach the Confederate soldier!';
+  else if(battlePhase==='steal')hint='Press SPACE to steal the whiskey!';
+  else hint='Run back to the time machine (left side)!';
+  ctx.fillStyle='#ff8c00';ctx.font='13px Georgia';ctx.fillText(hint,240,23);
+}
+
+function updateBattle(){
+  battleTimer++;
+  if(invincibleFrames>0)invincibleFrames--;
+  const spd=3.5;
+  if((keys['ArrowLeft']||keys['a']||keys['A'])&&player.x>70)player.x-=spd;
+  if((keys['ArrowRight']||keys['d']||keys['D'])&&player.x<762)player.x+=spd;
+  if((keys['ArrowUp']||keys['w']||keys['W'])&&player.onGround){player.vy=-12;player.onGround=false;}
+  player.vy+=0.5;player.y+=player.vy;
+  if(player.y>=GROUND_Y-player.h){player.y=GROUND_Y-player.h;player.vy=0;player.onGround=true;}
+
+  if(battlePhase==='dodge'){
+    timeSinceLastShot++;
+    if(timeSinceLastShot>55){bullets.push({x:soldierX-22,y:GROUND_Y-42,vx:-6.5,vy:0});timeSinceLastShot=0;}
+    timeSinceLastShell++;
+    if(timeSinceLastShell>200){
+      const dist=soldierX-(player.x+player.w/2);
+      shells.push({x:soldierX,y:GROUND_Y-55,vx:-dist/50,vy:-8,gravity:0.32,done:false});
+      timeSinceLastShell=0;
+    }
+    if(Math.abs(player.x+player.w/2-(soldierX+17))<55)battlePhase='steal';
+  } else if(battlePhase==='steal'){
+    timeSinceLastShot++;
+    if(timeSinceLastShot>90){bullets.push({x:soldierX-22,y:GROUND_Y-42,vx:-5,vy:0});timeSinceLastShot=0;}
+    if(keys[' ']||keys['Enter']){
+      whiskey={x:player.x,y:player.y-22};
+      bossHP=0;battlePhase='escape';
+      spawnParticle(soldierX+17,GROUND_Y-40,'#ffd700');
+      score+=200;updateScore();
+    }
+  } else if(battlePhase==='escape'){
+    if(whiskey){whiskey.x=player.x;whiskey.y=player.y-22;}
+    timeSinceLastShot++;
+    if(timeSinceLastShot>110){bullets.push({x:soldierX-22,y:GROUND_Y-42,vx:-4.5,vy:0});timeSinceLastShot=0;}
+    if(player.x<72){
+      gameState='cutscene';
+      ui.style.display='flex';
+      ui.innerHTML='<h2>🥃 You stole the '+currentSoldier.whiskey+'!</h2>'
+        +'<p>You sprint back through the portal just as a shell explodes behind you. Dad grabs the bottle, uncorks it with his teeth, and takes a long, satisfied swig.</p>'
+        +'<p style="color:#ffd700">"Now then… let's see if you know anything about '+currentSoldier.state+'."</p>'
+        +'<button id="continueBtn">Bring it on! 📚</button>';
+      document.getElementById('continueBtn').onclick=showStateQuiz;
+    }
+  }
+
+  bullets.forEach(b=>{b.x+=b.vx;b.y+=b.vy;});
+  bullets=bullets.filter(b=>b.x>-20&&b.x<820);
+  shells.forEach(s=>{
+    s.x+=s.vx;s.y+=s.vy;s.vy+=s.gravity;
+    if(s.y>=GROUND_Y-12&&!s.done){
+      s.done=true;
+      spawnParticle(s.x,GROUND_Y-10,'#ff8c00');
+      spawnParticle(s.x,GROUND_Y-10,'#ff4400');
+      if(Math.abs(s.x-(player.x+player.w/2))<65)hitPlayer();
+    }
+  });
+  shells=shells.filter(s=>!s.done);
+  bullets.forEach((b,i)=>{
+    if(b.x>player.x&&b.x<player.x+player.w&&b.y>player.y&&b.y<player.y+player.h){
+      bullets.splice(i,1);hitPlayer();
+    }
+  });
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.15;p.life--;});
+  particles=particles.filter(p=>p.life>0);
+}
+
+function gameLoop(){
+  requestAnimationFrame(gameLoop);
+  if(gameState==='battle'||gameState==='dead'||gameState==='cutscene'){
+    ctx.clearRect(0,0,800,600);
+    drawBG();drawTimeMachine();drawDad();
+    if(gameState==='battle')updateBattle();
+    particles.forEach(p=>{
+      ctx.globalAlpha=p.life/40;ctx.fillStyle=p.color;
+      ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);
+    });
+    ctx.globalAlpha=1;
+    bullets.forEach(b=>{
+      ctx.fillStyle='#ffd700';ctx.beginPath();ctx.ellipse(b.x,b.y,8,3,0,0,Math.PI*2);ctx.fill();
+    });
+    shells.forEach(s=>{
+      ctx.fillStyle='#b8860b';ctx.beginPath();ctx.arc(s.x,s.y,10,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#ffd700';ctx.beginPath();ctx.arc(s.x-3,s.y-3,3,0,Math.PI*2);ctx.fill();
+    });
+    if(whiskey)drawWhiskey();
+    if(bossHP>0)drawSoldier();
+    if(invincibleFrames===0||Math.floor(invincibleFrames/8)%2===0)drawPlayer();
+    drawHUD();
+  } else {
+    ctx.fillStyle='#1a0a00';ctx.fillRect(0,0,800,600);
+    ctx.fillStyle='rgba(255,215,0,0.2)';
+    for(let i=0;i<40;i++)ctx.fillRect((i*137)%800,(i*97)%260,2,2);
+  }
+}
+
+updateScore();updateLives();showTitle();gameLoop();
+</script>
+</body>
+</html>
